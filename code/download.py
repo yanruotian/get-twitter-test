@@ -5,6 +5,7 @@ import datetime
 
 from typing import Set, Dict, List
 from argparse import Namespace
+
 from snscrape.modules.twitter import TwitterSearchScraper
 
 DOWNLOAD_NUM_PER_FILE = 10000
@@ -22,7 +23,7 @@ class DownloadFileWriter:
 
     @staticmethod
     def get_file_path(output_path: str, file_num: int) -> str:
-        return os.path.join(output_path, f'{file_num :2d}.jsonl'.replace(' ', '0'))
+        return os.path.join(output_path, f'{file_num :6d}.jsonl'.replace(' ', '0'))
 
     def reopen(self):
         self.close()
@@ -53,16 +54,9 @@ def get_download_keys(args: Namespace) -> List[str]:
     args.logger.logln(f'keys = {keys}')
     return keys
 
-def download(args: Namespace) -> None:
-    keys = get_download_keys(args)
-
-    begin_file_num = 0
-    while os.path.isfile(DownloadFileWriter.get_file_path(args.output_path, begin_file_num)):
-        begin_file_num += 1
-    writer = DownloadFileWriter(args, begin_file_num)
-
+def get_used_keys(args: Namespace) -> Set[str]:
     log_file_contents: List[str] = args.logger.log_file_record
-    used_keywords_set: Set[str] = set()
+    used_keywords_set: Set[str] = {''}
     if log_file_contents is not None:
         for line in log_file_contents:
             line = line.strip()
@@ -70,21 +64,36 @@ def download(args: Namespace) -> None:
             if re_result is not None:
                 keyword = re_result.group(1)
                 used_keywords_set.add(keyword)
-    
+    return used_keywords_set
+
+def download_one_keyword(args: Namespace, keyword: str, writer: DownloadFileWriter) -> int:
+    scraper = TwitterSearchScraper(keyword)
+    item_count = 0
+    for item in scraper.get_items():
+        result: dict = json.loads(item.json())
+        result['keyword'] = keyword
+        writer.write(result)
+        item_count += 1
+        if args.time - item.date > datetime.timedelta(days = 2 * 365):
+            break
+    return item_count
+
+def download(args: Namespace) -> None:
+
+    keys = get_download_keys(args)
+    used_keywords_set = get_used_keys(args)
+
+    begin_file_num = 0
+    while os.path.isfile(DownloadFileWriter.get_file_path(args.output_path, begin_file_num)):
+        begin_file_num += 1
+    writer = DownloadFileWriter(args, begin_file_num)
+
     for index, keyword in enumerate(keys):
         args.logger.logln(f'begin scraping keyword "{keyword}" ({index} of {len(keys)})...')
         if keyword in used_keywords_set:
             args.logger.logln(f'keyword scraped, skipping...')
             continue
-        scraper = TwitterSearchScraper(keyword)
-        item_count = 0
-        for item in scraper.get_items():
-            result: dict = json.loads(item.json())
-            result['keyword'] = keyword
-            writer.write(result)
-            item_count += 1
-            if args.time - item.date > datetime.timedelta(weeks = 1):
-                break
+        item_count = download_one_keyword(args, keyword, writer)
         args.logger.logln(f'scraping end, item count = {item_count}')
 
     writer.close()
