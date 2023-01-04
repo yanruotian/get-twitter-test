@@ -1,3 +1,0 @@
-china lang:en
-中国 lang:ja
-china lang:es
