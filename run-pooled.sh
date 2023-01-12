@@ -6,11 +6,11 @@
 
 BASE_DIR="/root/get-twitter-test"
 DIVIDE_DIR="${BASE_DIR}/pooled"
-DOWNLOAD_DIR="${BASE_DIR}/downloaded-pooled"
+DOWNLOAD_DIR="${BASE_DIR}/downloaded-pooled-china"
 
-process_num=32
+process_num=1
 
 python3 -m code \
     --mode pooled-download --load_path "${DIVIDE_DIR}" \
-    --output_path "${DOWNLOAD_DIR}" -n ${process_num} \
+    --output_path "${DOWNLOAD_DIR}/downloaded" -n ${process_num} \
     --log_path "${DOWNLOAD_DIR}/pooled-download.log" 

@@ -2,3 +2,6 @@ __pycache__
 *.jsonl
 *.log
 *.7z
+*.png
+summary.json
+*.bak

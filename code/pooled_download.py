@@ -12,6 +12,10 @@ from snscrape.modules.twitter import TwitterSearchScraper
 from .download import DownloadFileWriter
 
 
+# 一个任务中下载的数据数如果超过这个值，会被截断，经过进一步的人工筛查之后再修改这个值进行下载
+# MAX_DATA_COUNT = 20000
+MAX_DATA_COUNT = float('inf')
+
 def _get_download_keys(args: Namespace, download_key_file_path: str) -> List[str]:
     args.logger.logln(f'loading download keys from file {download_key_file_path}...')
     keys = []
@@ -61,13 +65,17 @@ def download_one_keyword(
     appendix = f' until:{until_str} since:{since_str}'
 
     count = 0
-    scraper = TwitterSearchScraper(keyword + appendix)
+    # 注意：由于推特API改版导致以往写法不可用，以后或可将top = True删去
+    # 具体可见：https://github.com/JustAnotherArchivist/snscrape/issues/641
+    scraper = TwitterSearchScraper(keyword + appendix, top = True)
     with open(file_path, 'w+') as file:
         for item in scraper.get_items():
             result: dict = json.loads(item.json())
             result['keyword'] = keyword
             file.write(json.dumps(result, ensure_ascii = False) + '\n')
             count += 1
+            if count >= MAX_DATA_COUNT:
+                break
 
     return keyword, file_path, until, since, count
 
@@ -78,32 +86,63 @@ def process_func(config: Tuple[tuple, Union[int, Any]]):
     except Exception as e:
         return None, (args, extra_data, e)
 
+def copy_temp_file(args: Namespace, temp_file_path: str, writer: DownloadFileWriter, need_check: bool = True):
+    count = 0
+    with open(temp_file_path, 'r') as temp_file:
+        for line in temp_file:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            if need_check:
+                try:
+                    assert(isinstance(json.loads(line), dict))
+                except Exception as e:
+                    args.logger.logln(f'problem at temp file "{temp_file_path}", line "{line}"')
+                    args.logger.logln(f'    exception = {e}')
+                    continue
+            writer.writestrln(line)
+            count += 1
+    os.remove(temp_file_path)
+    return count
+
+def clean_temp_dir(args: Namespace, temp_file_dir: str, writer: DownloadFileWriter):
+    total_count = 0
+    for temp_file_name in os.listdir(temp_file_dir):
+        temp_file_path = os.path.join(temp_file_dir, temp_file_name)
+        if temp_file_name[-6 : ] == '.jsonl' and os.path.isfile(temp_file_path):
+            count = copy_temp_file(args, temp_file_path, writer, need_check = True)
+            args.logger.logln(f'[abnormal temp file] temp file "{temp_file_path}" has been cleaned, count = {count}')
+            total_count += count
+    return total_count
+
 
 def pooled_download(args: Namespace):
 
     keys = get_download_keys(args)
     used_keys = get_used_keys(args)
     output_dir: str = args.output_path
-    temp_dir: str = os.path.join(output_dir, 'temp')
+    temp_dir: str = os.path.join(os.path.dirname(output_dir), 'temp')
     os.makedirs(temp_dir, exist_ok = True)
     
     begin_file_num = 0
     while os.path.exists(DownloadFileWriter.get_file_path(args.output_path, begin_file_num)):
         begin_file_num += 1
 
+    temp_count: int = 0
+    download_configs: List[Tuple[tuple, int]] = []
+    for key in keys:
+        for month in range(2 * 12):
+            if (key, month) not in used_keys:
+                until = datetime.datetime.now() - datetime.timedelta(days = month * 30)
+                since = until - datetime.timedelta(days = 30)
+                temp_file_path = os.path.join(temp_dir, f'{temp_count: 6d}.jsonl'.replace(' ', '0'))
+                download_configs.append(((key, temp_file_path, until, since), month))
+                temp_count += 1
+
+    downloaded_data_count = 0
+    huge_data_keys: Set[str] = set()
+
     with DownloadFileWriter(args, begin_file_num) as writer:
-
-        temp_count: int = 0
-        download_configs: List[Tuple[tuple, int]] = []
-        for key in keys:
-            for month in range(2 * 12):
-                if (key, month) not in used_keys:
-                    until = datetime.datetime.now() - datetime.timedelta(days = month * 30)
-                    since = until - datetime.timedelta(days = 30)
-                    temp_file_path = os.path.join(temp_dir, f'{temp_count: 6d}.jsonl'.replace(' ', '0'))
-                    download_configs.append(((key, temp_file_path, until, since), month))
-                    temp_count += 1
-
         with Pool(int(args.n)) as pool:
             for result in pool.imap_unordered(process_func, download_configs):
                 func_result, extra_data = result
@@ -114,12 +153,15 @@ def pooled_download(args: Namespace):
                     args.logger.logln(f'    func args = {func_args}')
                     args.logger.logln(f'    exception = {err}')
                     continue
-                (keyword, temp_file_path, until, since, count) = func_result
+                keyword, temp_file_path, until, since, count = func_result
+                if count >= MAX_DATA_COUNT:
+                    args.logger.logln(f'[too much data] keyword "{keyword}" (month = {month}, until = {until}, since = {since}) might need manual check')
+                    huge_data_keys.add(keyword)
                 month = extra_data
-                with open(temp_file_path, 'r') as temp_file:
-                    for line in temp_file:
-                        line = line.strip()
-                        if len(line) > 0:
-                            writer.writestrln(line)
-                os.remove(temp_file_path)
+                copy_temp_file(args, temp_file_path, writer, need_check = False)
                 args.logger.logln(f'scraping end, keyword = "{keyword}", month = {month}, count = {count}, until = {until}, since = {since}')
+                downloaded_data_count += count
+        temp_data_count = clean_temp_dir(args, temp_dir, writer)
+
+    args.logger.logln(f'all keywords finished. config count = {len(download_configs)}, downloaded data count = {downloaded_data_count}, extra temp data count = {temp_data_count}')
+    args.logger.logln(f'these keywords might need manual check (with count >= {MAX_DATA_COUNT}): {huge_data_keys}')
