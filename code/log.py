@@ -12,12 +12,16 @@ class Logger:
 
     def __init__(self, args, do_print: bool = True, process_num: int = None):
         log_file_path: str = args.log_path
-        self.log_file_record = None
+        self.log_file_record = []
         if log_file_path:
             os.makedirs(os.path.dirname(log_file_path), exist_ok = True)
             if os.path.isfile(log_file_path):
+                backup_file_path = 'log_backup'
                 with open(log_file_path, 'r') as file:
-                    self.log_file_record = file.readlines()
+                    with open(backup_file_path, 'w+') as backup_file:
+                        for line in file:
+                            backup_file.write(line.replace('\n', '') + '\n')
+                self.log_file_record = open(backup_file_path, 'r')
             self.file = open(log_file_path, 'w+')
         else:
             self.file = Logger.FakeFile()

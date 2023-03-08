@@ -6,9 +6,9 @@
 
 BASE_DIR="/root/get-twitter-test"
 DIVIDE_DIR="${BASE_DIR}/pooled"
-DOWNLOAD_DIR="${BASE_DIR}/downloaded-pooled-china"
+DOWNLOAD_DIR="${BASE_DIR}/downloaded-pooled-tec"
 
-process_num=1
+process_num=32
 
 python3 -m code \
     --mode pooled-download --load_path "${DIVIDE_DIR}" \
