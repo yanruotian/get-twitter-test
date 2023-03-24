@@ -2,6 +2,8 @@ import os
 import pytz
 import datetime
 
+from typing import Iterable
+
 class Logger:
 
     class FakeFile:
@@ -28,6 +30,7 @@ class Logger:
         self.do_print = do_print
         self.process_string = ''
         self.set_process_num(process_num)
+        self.create_time = datetime.datetime.now(pytz.UTC)
 
     def set_process_num(self, process_num: int = None):
         self.process_num = process_num
@@ -47,3 +50,15 @@ class Logger:
         self.file.write(content + '\n')
         if self.do_print:
             print(self.process_string + content)
+
+    def log_iter(self, iter: Iterable, max_length: int = 190, prefix: str = ''):
+        self.logln(prefix + r'(')
+        line = '    '
+        for item in iter:
+            line += f'"{item}", '
+            if len(line) >= max_length:
+                self.logln(line)
+                line = '    '
+        if len(line.strip()) > 0:
+            self.logln(line)
+        self.logln(r')')

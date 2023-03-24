@@ -5,3 +5,5 @@ __pycache__
 *.png
 summary.json
 *.bak
+test
+log_backup

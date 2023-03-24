@@ -6,7 +6,7 @@
 
 BASE_DIR="/root/get-twitter-test"
 DIVIDE_DIR="${BASE_DIR}/pooled"
-DOWNLOAD_DIR="${BASE_DIR}/downloaded-pooled-tec"
+DOWNLOAD_DIR="${BASE_DIR}/downloaded-20230319-new-pooled"
 
 process_num=32
 

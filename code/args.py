@@ -4,7 +4,7 @@ def get_args() -> Namespace:
     parser = ArgumentParser()
     parser.add_argument(
         '--mode', type = str, default = 'download', 
-        choices = ['download', 'transform', 'divide', 'pooled-download']
+        choices = ['download', 'transform', 'divide', 'pooled-download', 'threaded-download']
     )
     parser.add_argument('--load_path', type = str, default = '')
     parser.add_argument('--output_path', type = str, default = '')

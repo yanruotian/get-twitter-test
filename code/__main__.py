@@ -1,4 +1,5 @@
 import pytz
+import time
 import datetime
 
 from .log import Logger
@@ -9,6 +10,7 @@ from .transform import transform
 from .pooled_download import pooled_download
 
 def main(args):
+    start_time = time.time()
     args.time = datetime.datetime.now(tz = pytz.UTC)
     args.logger = Logger(args)
     mode: str = args.mode
@@ -19,8 +21,10 @@ def main(args):
     elif mode == 'download':
         args.logger.set_process_num(args.n)
         download(args)
-    elif mode == 'pooled-download':
+    elif mode in {'pooled-download', 'threaded-download'}:
         pooled_download(args)
+    end_time = time.time()
+    args.logger.logln(f'download finished, time spent = {datetime.timedelta(seconds = int(end_time - start_time))}')
     args.logger.close()
 
 if __name__ == '__main__':
