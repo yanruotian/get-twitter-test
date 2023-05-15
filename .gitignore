@@ -1,4 +1,5 @@
-__pycache__
+downloaded/
+__pycache__/
 *.jsonl
 *.log
 *.7z
