@@ -6,5 +6,7 @@ __pycache__/
 *.png
 summary.json
 *.bak
-test
+test*
 log_backup
+*.db
+tw-multi-*/

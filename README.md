@@ -2,13 +2,15 @@
 
 ## 环境安装
 
-需要安装`snscrape`库：
+需要安装`twscrape`库：
 
 ```cmd
-pip3 install snscrape
+pip3 install twscrape
 ```
 
 ## 运行
+
+本仓库有两个模块的源代码，一个是`src`，另一个是`twsrc`。其中，`src`是基于`snscrape`写的爬取代码，由于2023年7月份推特政策的更新，无法以游客身份继续爬取数据，因此已不可用。`twsrc`是基于`twscrape`写的爬取代码，需要购买账号登录，以完成爬取。
 
 运行脚本是`run-pooled.sh`，运行前需要设置相应的变量：
 

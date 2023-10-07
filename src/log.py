@@ -27,6 +27,7 @@ class Logger:
             self.file = open(log_file_path, 'w+')
         else:
             self.file = Logger.FakeFile()
+        self.mute = False
         self.do_print = do_print
         self.process_string = ''
         self.set_process_num(process_num)
@@ -46,10 +47,11 @@ class Logger:
         self.file.close()
 
     def logln(self, content: str = ''):
-        content = f'{datetime.datetime.now(pytz.UTC)} - {content}'
-        self.file.write(content + '\n')
-        if self.do_print:
-            print(self.process_string + content)
+        if not self.mute:
+            content = f'{datetime.datetime.now(pytz.UTC)} - {content}'
+            self.file.write(content + '\n')
+            if self.do_print:
+                print(self.process_string + content)
 
     def log_iter(self, iter: Iterable, max_length: int = 190, prefix: str = ''):
         self.logln(prefix + r'(')

@@ -27,7 +27,6 @@ dingtalk
 嶽飛艦
 潘仲昂
 dong fang hong i
-sunday
 上廣
 中央财经大学
 lm-7
@@ -2368,7 +2367,6 @@ chen jia'er
 天津医科大学附属肿瘤医院
 翁啓惠
 中國傳媒大學
-wechat
 北京冶金管理幹部學院
 bitmain
 南京工学院

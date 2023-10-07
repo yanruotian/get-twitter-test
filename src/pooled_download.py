@@ -16,7 +16,7 @@ from .download import DownloadFileWriter
 
 
 # 一个任务中下载的数据数如果超过这个值，会被截断，经过进一步的人工筛查之后再修改这个值进行下载
-# MAX_DATA_COUNT = 20000
+MAX_DATA_COUNT = 200000
 MAX_DATA_COUNT = float('inf')
 
 def _get_download_keys(args: Namespace, download_key_file_path: str) -> List[str]:
@@ -25,11 +25,11 @@ def _get_download_keys(args: Namespace, download_key_file_path: str) -> List[str
     with open(download_key_file_path, 'r') as file:
         for line in file:
             line = line.strip()
-            if re.search('[\u4e00-\u9fff]', line) is None and len(line) <= 2:
-                args.logger.logln(f'[keys too short] skipping key "{line}" (len = {len(line)})')
+            keyword = re.sub(r'(since|until):\S+', '', line).strip()
+            if re.search('[\u4e00-\u9fff]', keyword) is None and len(keyword) <= 2:
+                args.logger.logln(f'[keys too short] skipping key "{line}" (len = {len(keyword)})')
             else:
                 keys.append(line)
-    args.logger.log_iter(keys, prefix = 'keys = ')
     return keys
 
 def get_download_keys(args: Namespace) -> List[str]:
@@ -37,7 +37,7 @@ def get_download_keys(args: Namespace) -> List[str]:
     keys = []
     for file_name in os.listdir(download_key_dir_path):
         file_path = os.path.join(download_key_dir_path, file_name)
-        if file_name[-4 : ] == '.txt' and os.path.isfile(file_path):
+        if file_name.endswith(f'.{args.file_type}') and os.path.isfile(file_path):
             keys += _get_download_keys(args, file_path)
     return keys
 
@@ -47,10 +47,10 @@ def get_used_keys(args: Namespace) -> Set[Tuple[str, int]]:
     if log_file_contents is not None:
         for line in log_file_contents:
             line = line.strip()
-            re_result = re.search(r'scraping end, keyword = "(.+?)", month = ([0-9]+), count = ([0-9]+)', line)
+            re_result = re.search(r'scraping end, keyword = "(.+?)", month = ([0-9]+|None), count = ([0-9]+)', line)
             if re_result is not None:
                 keyword = re_result.group(1)
-                month = int(re_result.group(2))
+                month = (lambda s: None if s == 'None' else int(s))(re_result.group(2))
                 count = int(re_result.group(3))
                 args.logger.logln(f'[used keys] scraping end, keyword = "{keyword}", month = {month}, count = {count}')
                 used_keywords_set.add((keyword, month))
@@ -59,13 +59,16 @@ def get_used_keys(args: Namespace) -> Set[Tuple[str, int]]:
 def download_one_keyword(
         keyword: str, 
         file_path: str,
-        until: datetime.datetime = datetime.datetime.now(), 
-        since: datetime.datetime = datetime.datetime.now() - datetime.timedelta(days = 2 * 365)
+        until: datetime.datetime = None, 
+        since: datetime.datetime = None,
     ):
 
-    until_str = until.strftime(r'%Y-%m-%d')
-    since_str = since.strftime(r'%Y-%m-%d')
-    appendix = f' until:{until_str} since:{since_str}'
+    until_str = until.strftime(r'%Y-%m-%d') if until is not None else None
+    since_str = since.strftime(r'%Y-%m-%d') if since is not None else None
+    appendix = (
+        (f' until:{until_str}' if until_str is not None else '') + 
+        (f' since:{since_str}' if since_str is not None else '')
+    )
 
     print(f'starting "{keyword}", since = "{since_str}", until = "{until_str}"')
 
@@ -80,7 +83,13 @@ def download_one_keyword(
             file.write(json.dumps(result, ensure_ascii = False) + '\n')
             count += 1
             if count % 10000 == 0 and count > 0:
-                print(f'count = {count} in keyword "{keyword}" (since = {since_str}, until = {until_str})')
+                dateStr: str = result.get('date')[: len('xxxx-xx-xx')]
+                date = datetime.datetime(*map(int, dateStr.split('-')))
+                precentage = (until - date).total_seconds() / (until - since).total_seconds() * 100
+                print((
+                    f'count = {count} in keyword "{keyword}" (since = {since_str}'
+                    f', until = {until_str}) {precentage * 100 :.2f}%'
+                ))
             if count >= MAX_DATA_COUNT:
                 break
 
@@ -121,7 +130,7 @@ def clean_temp_dir(args: Namespace, temp_file_dir: str, writer: DownloadFileWrit
     total_count = 0
     for temp_file_name in os.listdir(temp_file_dir):
         temp_file_path = os.path.join(temp_file_dir, temp_file_name)
-        if temp_file_name[-6 : ] == '.jsonl' and os.path.isfile(temp_file_path):
+        if temp_file_name.endswith('.jsonl') and os.path.isfile(temp_file_path):
             count = copy_temp_file(args, temp_file_path, writer, need_check = True)
             args.logger.logln(f'[abnormal temp file] temp file "{temp_file_path}" has been cleaned, count = {count}')
             total_count += count
@@ -135,7 +144,6 @@ def date_minus(initial: Tuple[int, int], month: int):
 
 def pooled_download(args: Namespace):
 
-    keys = get_download_keys(args)
     output_dir: str = args.output_path
     temp_dir: str = os.path.join(os.path.dirname(output_dir), 'temp')
     os.makedirs(temp_dir, exist_ok = True)
@@ -144,20 +152,26 @@ def pooled_download(args: Namespace):
     while os.path.exists(DownloadFileWriter.get_file_path(args.output_path, begin_file_num)):
         begin_file_num += 1
 
-    def _get_configs(counter_callback = lambda: None):
+    def _get_configs(counter_callback = lambda: None, ignore_used_keys = True):
         temp_count: int = 0
-        used_keys = get_used_keys(args)
-        download_configs: List[Tuple[tuple, int]] = []
+        keys = get_download_keys(args)
+        used_keys = set() if ignore_used_keys else get_used_keys(args)
         for key in keys:
-            for month in range(12 * 12):
-                if (key, month) not in used_keys:
-                    until = datetime.datetime(*date_minus((2023, 1), month), day = 1)
-                    since = datetime.datetime(*date_minus((2023, 1), month + 1), day = 1)
+            if 'since:' in key:
+                if (key, None) not in used_keys:
                     temp_file_path = os.path.join(temp_dir, f'{temp_count :06d}.jsonl')
-                    download_configs.append(((key, temp_file_path, until, since), month))
+                    yield ((key, temp_file_path, None, None), None)
                     temp_count += 1
                     counter_callback()
-        return download_configs
+            else:
+                for month in range(12 * 12):
+                    if (key, month) not in used_keys:
+                        until = datetime.datetime(*date_minus((2023, 1), month), day = 1)
+                        since = datetime.datetime(*date_minus((2023, 1), month + 1), day = 1)
+                        temp_file_path = os.path.join(temp_dir, f'{temp_count :06d}.jsonl')
+                        yield ((key, temp_file_path, until, since), month)
+                        temp_count += 1
+                        counter_callback()
 
     class _CountObj:
         def __init__(self, value: int = 0):
@@ -165,17 +179,24 @@ def pooled_download(args: Namespace):
         def callback(self):
             self.count += 1
     count_obj = _CountObj()
+    args.logger.mute = True
+    count_obj.count = sum(1 for _ in _get_configs())
+    args.logger.mute = False
+    
     finished_count = 0
     config_count = 0
     downloaded_data_count = 0
     huge_data_keys: Set[str] = set()
-    Pool = ThreadPool if args.mode == 'threaded-download' else ProcessPool
+    Pool = {
+        'pooled-download': ProcessPool,
+        'threaded-download': ThreadPool,
+    }.get(args.mode)
 
     with DownloadFileWriter(args, begin_file_num) as writer:
         temp_data_count = clean_temp_dir(args, temp_dir, writer)
         with Pool(int(args.n)) as pool:
             for result in pool.imap_unordered(
-                process_func, _get_configs(lambda: count_obj.callback())
+                process_func, _get_configs()
             ):
                 config_count += 1
                 func_result, extra_data = result
