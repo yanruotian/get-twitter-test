@@ -62,10 +62,10 @@ twscrape search china --limit 5
 可以用模块调用的形式调用`twsrc`模块：
 
 ```
-python3 -m twsrc -h
+python3 -m twsrc --help
 ```
 
-该命令会输出使用该模块的基本方式。在进一步运行代码之前，建议先完成后文<a name="一些注意事项">一些注意事项</a>中的步骤。
+该命令会输出使用该模块的基本方式。在进一步运行代码之前，建议先完成后文[一些注意事项](https://github.com/yanruotian/get-twitter-test#%E4%B8%80%E4%BA%9B%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9)中的步骤。
 
 在本仓库中，已经包含了几个默认的配置文件，分别是`twsrc/accounts.txt`，存储了测试用的账号信息；以及`twsrc/keywords-demo.txt`，存储了测试用的需要爬取的关键词。运行以下代码可以对该关键词进行爬取：
 
@@ -85,7 +85,7 @@ scraping end, keyword = "deepin since:2017-08-09 until:2017-08-10", count = 71 (
 
 #### 一些注意事项
 
-- 修改`twscrape`源码，使其支持推特的新域名（`x.com`）
+- 修改`twscrape`源码，使其支持推特的新域名（`x.com`）。
 
   详见[github issue](https://github.com/vladkens/twscrape/pull/71)，在推特更改版本后修改了验证邮件信息的中的域名信息，会导致其邮件验证模块失效。当前`pip`源似乎没有同步最新版本的`twscrape`，可以手动在本地的`pip`文件夹处修改其源码，具体在`twscrape.imap._wait_email_code`函数，有以下内容：
 
@@ -116,3 +116,41 @@ scraping end, keyword = "deepin since:2017-08-09 until:2017-08-10", count = 71 (
 
   ...
   ```
+
+- [可选] 修改`twscrape`源码，减少其超速等待时间。
+
+  由于推特政策的更改，每个账号的爬取速率存在一个限制。具体而言，发送的请求会返回一个`(88) Rate limit exceeded`错误信息。此时可以选择暂停该账号的使用，一段时间后再继续使用该账号爬取。在`twscrape`中该等待时间的默认值为4小时，实际上有点过于保守了，经实测可能设置为15分钟就足够。具体在`twscrape.queue_client.QueueClient._check_rep`函数，有以下内容：
+
+  ```python3
+  ...
+
+  # possible new limits for tweets view per account
+  if msg.startswith("(88) Rate limit exceeded") or rep.status_code == 429:
+      await self._close_ctx(utc_ts() + 60 * 60 * 4)  # lock for 4 hours
+      raise RateLimitError(msg)
+
+  ...
+  ```
+
+  修改为：
+
+  ```python3
+  ...
+
+  # possible new limits for tweets view per account
+  if msg.startswith("(88) Rate limit exceeded") or rep.status_code == 429:
+      await self._close_ctx(utc_ts() + 60 * 15)  # lock for 15 minutes
+      raise RateLimitError(msg)
+
+  ...
+  ```
+
+### 并行运行模块`twsrc`
+
+由于`twscrape`是基于异步协程写的，直接在`python`脚本用`multiprocessing`等库开启多进程支持容易导致程序崩溃，因此建议使用`bash`脚本同时开启多个爬虫程序，以实现多进程爬取。
+
+相关参考代码可见`tw-multi/twsrc-multi.sh`，大体思路是先确定多进程的并发数，然后用`split.py`脚本将原账号、代理和关键词文件均分到若干个子文件夹，然后在各个子文件中调用`twsrc`模块。
+
+需要注意该脚本是爬取中国科技实体数据时编写，不一定适用于其它使用情况。
+
+此外也可以基于上述思路用一个`python`主进程管理爬虫子进程，以实现动态分配给每个子进程需要爬取的内容，避免关键词划分不均衡。（没写相关脚本）
