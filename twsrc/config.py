@@ -18,9 +18,11 @@ def getProxies(filePath: str | None):
 # PROXY = 'http://yanruotian:123456@dc.visitxiangtan.com:10000'
 PROXIES: list[str] | None = getProxies(ARGS.proxies)
 ACCOUNT_ID: int | None = ARGS.account_id
-ACCOUNTS_PATH: str = ARGS.accounts or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'accounts.txt')
-KEYWORDS_PATH: str = ARGS.keywords or '/root/get-twitter-test/keywords/china-tec-new/keywords.renewed'
-OUTPUT_DIR: str = ARGS.output or '/root/get-twitter-test/downloaded/china-tec-2023-07-15/downloaded'
+ACCOUNTS_PATH: str = ARGS.accounts or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'accounts.txt'
+)
+KEYWORDS_PATH: str = ARGS.keywords
+OUTPUT_DIR: str = ARGS.output
 
 # info('config: ' + str({
 #     key: value for key, value in globals().items() if (

@@ -39,7 +39,7 @@ class Writer:
         self.lineCount = 0
         self.file = open(os.path.join(
             self.outputDir, self.getFileName(),
-        ), 'w')
+        ), 'w', encoding = 'utf-8')
     
     def close(self):
         if self.file is not None:
